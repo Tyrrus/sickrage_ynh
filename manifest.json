@@ -9,15 +9,15 @@
   "url": "https://sickchill.github.io/",
   "license": "free",
   "maintainer": {
-    "name": "scith",
-    "url": "https://github.com/scith"
+    "name": "Tyrrus",
+    "url": "https://github.com/Tyrrus"
   },
   "multi_instance": false,
   "services": [
     "nginx"
   ],
   "requirements": {
-    "yunohost": ">= 2.4.0"
+    "yunohost": ">= 3.7.0"
   },
   "arguments": {
     "install": [

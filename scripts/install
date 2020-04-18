@@ -1,47 +1,71 @@
 #!/bin/bash
 
-	set -eu
-	app=$YNH_APP_INSTANCE_NAME
-	source="https://github.com/SickChill/SickChill"
+#=================================================
+# GENERIC START
+#=================================================
+# IMPORT GENERIC HELPERS
+#=================================================
 
+source /usr/share/yunohost/helpers
 
-# Source app helpers
-	source /usr/share/yunohost/helpers
+#=================================================
+# MANAGE SCRIPT FAILURE
+#=================================================
 
-# Retrieve arguments
-	domain=$YNH_APP_ARG_DOMAIN
-	path=$YNH_APP_ARG_PATH
+# Exit if an error occurs during the execution of the script
+ynh_abort_if_errors
 
-# Correct path: puts a / at the start and nothing at the end
-	if [ "${path:0:1}" != "/" ]; then
-		path="/$path"
-	fi
-	if [ "${path:${#path}-1}" == "/" ] && [ ${#path} -gt 1 ]; then
-		path="${path:0:${#path}-1}"
-	fi
+#=================================================
+# RETRIEVE ARGUMENTS FROM THE MANIFEST
+#=================================================
 
-# Check domain/path availability
-	sudo yunohost app checkurl "${domain}${path}" -a "$app" \
-		|| ynh_die "Path not available: ${domain}${path}"
+domain=$YNH_APP_ARG_DOMAIN
+path=$YNH_APP_ARG_PATH
+app=$YNH_APP_INSTANCE_NAME
+source="https://github.com/SickChill/SickChill"
 
+#=================================================
+# CHECK IF THE APP CAN BE INSTALLED WITH THESE ARGS
+#=================================================
+# Normalize the url path syntax
+
+app_install_dir=/opt/yunohost/$app
+test ! -e "app_install_dir" || ynh_die "This path already contains a folder"
+
+# Normalize the url path syntax
+path_url=$(ynh_normalize_url_path $path)
+
+# Check web path availability
+ynh_webpath_available $domain $path_url
+# Register (book) web path
+ynh_webpath_register $app $domain $path_url
+
+#=================================================
+# STORE SETTINGS
+#=================================================
 # Destinations definitions
-	app_install_dir="/opt/yunohost/$app"
 	app_data_dir="/home/yunohost.app/$app"
 	app_logs_dir="/var/log/$app"
 	app_config_file="${app_data_dir}/settings.conf"
 	app_pid_file="/var/run/$app/$app.pid"
 	app_python_bin="/usr/bin/python"
 
+#=================================================
+# STANDARD MODIFICATIONS
+#=================================================
+# FIND AND OPEN A PORT
+#=================================================
+
+# Find a free port
+port=$(ynh_find_port 7779)
+# Open this port
+ynh_print_info "Opening port $port"
+yunohost firewall allow --no-upnp TCP $port 2>&1
+ynh_app_setting_set $app port $port
+
+
 # Install Couchpotato
 
-	# Get first available port
-	port=7779
-	sudo yunohost app checkport $port
-	while [[ ! $? -eq 0 ]]; do
-		port=$((port+1))
-		sudo yunohost app checkport $port
-	done
-	ynh_app_setting_set "$app" port "$port"
 	
 	# Make directories
 	sudo mkdir -p $app_data_dir
@@ -148,9 +172,14 @@
 	sed -i "s@__PORT__@$port@g" ../conf/nginx.conf
 	sudo cp ../conf/nginx.conf /etc/nginx/conf.d/$domain.d/$app.conf
 
-# Open the /api path so that external applications can connect
-	ynh_app_setting_set "$app" unprotected_uris "/api"
+#=================================================
+# SETUP SSOWAT
+#=================================================
+ynh_app_setting_set $app unprotected_uris "/api"
 
-# Reload Nginx and regenerate SSOwat conf
-	sudo service nginx reload
-	sudo yunohost app ssowatconf
+#=================================================
+# RELOAD NGINX
+#=================================================
+ynh_print_info "Reload nginx and start $app"
+systemctl reload nginx
+ynh_systemd_action -l "INFO in server: Starting Gevent server"
